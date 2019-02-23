@@ -2,6 +2,7 @@ package com.example.nfc;
 
 import android.app.Activity;
 import android.app.PendingIntent;
+import android.content.Context;
 import android.content.Intent;
 import android.nfc.NdefMessage;
 import android.nfc.NdefRecord;
@@ -34,10 +35,22 @@ import com.example.nfc.parser.NdefMessageParser;
 import com.example.nfc.record.ParsedNdefRecord;
 import com.example.nfc.service.Authenticate;
 import com.example.nfc.service.Rest;
+import com.example.nfc.service.User;
+import com.example.nfc.service.UserTask;
 
+import org.json.JSONException;
+import org.json.JSONObject;
 import org.w3c.dom.Text;
 
+import java.io.BufferedInputStream;
+import java.io.IOException;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.MalformedURLException;
+import java.net.ProtocolException;
+import java.net.URL;
 import java.util.List;
+import java.util.concurrent.ExecutionException;
 
 import static android.nfc.NdefRecord.createMime;
 
@@ -59,9 +72,7 @@ public class MainActivity extends AppCompatActivity
         fab.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                Rest rest = new Rest();
-                Snackbar.make(view, rest.getToken(), Snackbar.LENGTH_LONG)
-                        .setAction("Action", null).show();
+                userInfo(view);
             }
         });
 
@@ -194,4 +205,37 @@ public class MainActivity extends AppCompatActivity
         text.setText(new String(msg.getRecords()[0].getPayload()));
         Log.d("MESSAGE GETTED", new String(msg.getRecords()[0].getPayload()));
     }
+
+
+
+
+
+
+
+
+    protected void userInfo(View view)
+    {
+        UserTask getUser = new UserTask(getApplicationContext());
+        User user = null;
+        try {
+            user = getUser.execute().get();
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        } catch (ExecutionException e) {
+            e.printStackTrace();
+        }
+        if(user!=null) {
+            Context context = getApplicationContext();
+            int duration = Toast.LENGTH_SHORT;
+
+            Toast toast = Toast.makeText(context, user.toString(), duration);
+            toast.show();
+        }
+
+
+//        Intent intent = new Intent(getApplicationContext(), GalleryActivity.class);
+//        startActivity(intent);
+
+    }
+
 }

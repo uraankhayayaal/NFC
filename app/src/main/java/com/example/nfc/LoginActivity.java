@@ -290,7 +290,6 @@ public class LoginActivity extends AppCompatActivity implements LoaderCallbacks<
                 out.flush();
                 int statusCode = conn.getResponseCode();
 
-
                 Log.d("POST REQUEST:", " The status code is " + statusCode);
 
                 if (statusCode == 400) {

@@ -38,6 +38,7 @@ dependencies {
     androidTestImplementation 'com.android.support.test.espresso:espresso-core:3.0.2'
     api 'com.google.guava:guava:27.0.1-android'
     api 'org.springframework.android:spring-android-rest-template:2.0.0.M3'
+    implementation 'com.google.code.gson:gson:2.8.2'
 }
 repositories {
     maven {
