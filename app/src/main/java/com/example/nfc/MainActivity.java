@@ -32,6 +32,8 @@ import android.widget.Toast;
 
 import com.example.nfc.parser.NdefMessageParser;
 import com.example.nfc.record.ParsedNdefRecord;
+import com.example.nfc.service.Authenticate;
+import com.example.nfc.service.Rest;
 
 import org.w3c.dom.Text;
 
@@ -47,6 +49,7 @@ public class MainActivity extends AppCompatActivity
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        Authenticate.isAuth(this);
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         Toolbar toolbar = (Toolbar) findViewById(R.id.toolbar);
@@ -56,7 +59,8 @@ public class MainActivity extends AppCompatActivity
         fab.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                Snackbar.make(view, "Replace with your own action", Snackbar.LENGTH_LONG)
+                Rest rest = new Rest();
+                Snackbar.make(view, rest.getToken(), Snackbar.LENGTH_LONG)
                         .setAction("Action", null).show();
             }
         });
