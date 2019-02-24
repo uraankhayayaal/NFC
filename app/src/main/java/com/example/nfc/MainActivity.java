@@ -1,24 +1,22 @@
 package com.example.nfc;
 
-import android.app.Activity;
-import android.app.PendingIntent;
+import android.app.AlertDialog;
+import android.app.Dialog;
 import android.content.Context;
+import android.content.DialogInterface;
 import android.content.Intent;
 import android.nfc.NdefMessage;
 import android.nfc.NdefRecord;
 import android.nfc.NfcAdapter;
 import android.nfc.NfcEvent;
-import android.nfc.Tag;
-import android.nfc.tech.MifareClassic;
-import android.nfc.tech.MifareUltralight;
-import android.nfc.tech.Ndef;
-import android.nfc.tech.NdefFormatable;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Parcelable;
-import android.provider.Settings;
+import android.support.annotation.RequiresApi;
 import android.support.design.widget.FloatingActionButton;
-import android.support.design.widget.Snackbar;
+import android.support.v4.app.DialogFragment;
 import android.util.Log;
+import android.util.Pair;
 import android.view.View;
 import android.support.design.widget.NavigationView;
 import android.support.v4.view.GravityCompat;
@@ -28,19 +26,23 @@ import android.support.v7.app.AppCompatActivity;
 import android.support.v7.widget.Toolbar;
 import android.view.Menu;
 import android.view.MenuItem;
+import android.widget.EditText;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import com.example.nfc.parser.NdefMessageParser;
-import com.example.nfc.record.ParsedNdefRecord;
 import com.example.nfc.service.Authenticate;
-import com.example.nfc.service.Rest;
+import com.example.nfc.service.PayTask;
+import com.example.nfc.service.Payment;
+import com.example.nfc.service.Product;
+import com.example.nfc.service.ProductTask;
 import com.example.nfc.service.User;
 import com.example.nfc.service.UserTask;
+import com.google.gson.Gson;
+import com.google.gson.reflect.TypeToken;
 
+import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
-import org.w3c.dom.Text;
 
 import java.io.BufferedInputStream;
 import java.io.IOException;
@@ -49,16 +51,23 @@ import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
 import java.net.ProtocolException;
 import java.net.URL;
+import java.util.ArrayList;
+import java.util.Base64;
+import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
 
 import static android.nfc.NdefRecord.createMime;
+import static com.example.nfc.LoginActivity.convertStreamToString;
 
 public class MainActivity extends AppCompatActivity
         implements NavigationView.OnNavigationItemSelectedListener, NfcAdapter.CreateNdefMessageCallback {
 
     private NfcAdapter nfcAdapter;
     private TextView text;
+    private EditText sendSumm;
+    private String product_id;
+    private String phone;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -66,13 +75,24 @@ public class MainActivity extends AppCompatActivity
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         Toolbar toolbar = (Toolbar) findViewById(R.id.toolbar);
+        toolbar.setTitle(getUsername());
         setSupportActionBar(toolbar);
 
         FloatingActionButton fab = (FloatingActionButton) findViewById(R.id.fab);
         fab.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                userInfo(view);
+
+                Boolean products = null;
+                try {
+                    Payment mPay = new Payment("2268927","100");
+                    PayTask getProduct = new PayTask(getApplicationContext(), phone, mPay);
+                    products = getProduct.execute().get();
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                } catch (ExecutionException e) {
+                    e.printStackTrace();
+                }
             }
         });
 
@@ -90,6 +110,7 @@ public class MainActivity extends AppCompatActivity
          */
         text = (TextView) findViewById(R.id.text);
         nfcAdapter = NfcAdapter.getDefaultAdapter(this);
+        sendSumm = (EditText) findViewById(R.id.send_summ);
 
         if (nfcAdapter == null) {
             Toast.makeText(this, "No NFC", Toast.LENGTH_SHORT).show();
@@ -126,7 +147,10 @@ public class MainActivity extends AppCompatActivity
 
         //noinspection SimplifiableIfStatement
         if (id == R.id.action_settings) {
-            return true;
+            if( Authenticate.logOut(getApplicationContext()) )
+                this.recreate();
+//
+//            return true;
         }
 
         return super.onOptionsItemSelected(item);
@@ -141,6 +165,8 @@ public class MainActivity extends AppCompatActivity
         if (id == R.id.nav_camera) {
             // Handle the camera action
         } else if (id == R.id.nav_gallery) {
+            Intent intent = new Intent(getApplicationContext(), CardsActivity.class);
+            startActivity(intent);
 
         } else if (id == R.id.nav_slideshow) {
 
@@ -163,7 +189,12 @@ public class MainActivity extends AppCompatActivity
 
         // Check to see that the Activity started due to an Android Beam
         if (NfcAdapter.ACTION_NDEF_DISCOVERED.equals(getIntent().getAction())) {
-            processIntent(getIntent());
+            try {
+                processIntent(getIntent());
+            }
+            catch (JSONException e){
+                e.printStackTrace();
+            }
         }
     }
 
@@ -172,10 +203,11 @@ public class MainActivity extends AppCompatActivity
         setIntent(intent);
     }
 
+
     @Override
     public NdefMessage createNdefMessage(NfcEvent event) {
-        String text = ("Hello Petr, I am Ayaal!\n\n" +
-                "Beam Time: " + System.currentTimeMillis());
+
+        String text = ("{sum:"+sendSumm.getText()+", product_id:"+product_id+"}" + System.currentTimeMillis());
         NdefMessage msg = new NdefMessage(
                 new NdefRecord[] { createMime(
                         "application/vnd.com.example.android.beam", text.getBytes())
@@ -195,15 +227,48 @@ public class MainActivity extends AppCompatActivity
     /**
      * Parses the NDEF Message from the intent and prints to the TextView
      */
-    void processIntent(Intent intent) {
+    void processIntent(Intent intent) throws JSONException {
         text = (TextView) findViewById(R.id.text);
         Parcelable[] rawMsgs = intent.getParcelableArrayExtra(
                 NfcAdapter.EXTRA_NDEF_MESSAGES);
         // only one message sent during the beam
         NdefMessage msg = (NdefMessage) rawMsgs[0];
         // record 0 contains the MIME type, record 1 is the AAR, if present
-        text.setText(new String(msg.getRecords()[0].getPayload()));
+        String jsonString = new String(msg.getRecords()[0].getPayload());
+        //text.setText(jsonString);
         Log.d("MESSAGE GETTED", new String(msg.getRecords()[0].getPayload()));
+
+        Payment mPay;
+        Boolean products = null;
+
+        JSONObject jsonArray = new JSONObject(jsonString);
+        Gson gson = new Gson();
+        mPay = gson.fromJson(String.valueOf(jsonArray), new TypeToken<Payment>() {
+        }.getType());
+
+        try {
+
+            PayTask getProduct = new PayTask(getApplicationContext(), phone, mPay);
+
+            products = getProduct.execute().get();
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        } catch (ExecutionException e) {
+            e.printStackTrace();
+        }
+
+        if(products) {
+            Toast toast = Toast.makeText(getApplicationContext(),
+                    "Вы успешно получили перевод",
+                    Toast.LENGTH_SHORT);
+            toast.show();
+        }else{
+            Toast toast = Toast.makeText(getApplicationContext(),
+                    "Не получилось",
+                    Toast.LENGTH_SHORT);
+            toast.show();
+        }
+
     }
 
 
@@ -213,7 +278,28 @@ public class MainActivity extends AppCompatActivity
 
 
 
-    protected void userInfo(View view)
+    protected void productInfo(View view)
+    {
+        ProductTask getProduct = new ProductTask(getApplicationContext());
+        Collection<Product> products = null;
+        try {
+            products = getProduct.execute().get();
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        } catch (ExecutionException e) {
+            e.printStackTrace();
+        }
+        if(products!=null) {
+            Context context = getApplicationContext();
+            int duration = Toast.LENGTH_SHORT;
+            Log.i("PROOOOOODUCT", products.iterator().next().toString());
+            Toast toast = Toast.makeText(context, products.iterator().next().toString(), duration);
+            toast.show();
+        }
+
+    }
+
+    protected String getUsername()
     {
         UserTask getUser = new UserTask(getApplicationContext());
         User user = null;
@@ -225,17 +311,31 @@ public class MainActivity extends AppCompatActivity
             e.printStackTrace();
         }
         if(user!=null) {
-            Context context = getApplicationContext();
-            int duration = Toast.LENGTH_SHORT;
-
-            Toast toast = Toast.makeText(context, user.toString(), duration);
-            toast.show();
+            setSumm();
+            phone = user.getPhone();
+            return user.getSurname() + " " + user.getFirstName();
         }
-
-
-//        Intent intent = new Intent(getApplicationContext(), GalleryActivity.class);
-//        startActivity(intent);
-
+        return null;
     }
 
+    protected String getSumm()
+    {
+        ProductTask getProduct = new ProductTask(getApplicationContext());
+        Collection<Product> products = null;
+        try {
+            products = getProduct.execute().get();
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        } catch (ExecutionException e) {
+            e.printStackTrace();
+        }
+        product_id = products.iterator().next().getId().toString();
+        return products.iterator().next().getBalance();
+    }
+
+    protected void setSumm()
+    {
+        TextView balance = (TextView) findViewById(R.id.sum);
+        balance.setText(getSumm());
+    }
 }
